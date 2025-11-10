@@ -70,11 +70,13 @@ for chunk in pd.read_csv(
     if chunk.empty:
         continue
 
-    # 시도 컬럼 이름 맞추기 (가맹시 기준으로 사용)
-    if '가맹시' not in chunk.columns:
-        raise ValueError("카드 데이터에 '가맹시' 컬럼이 없습니다. 실제 시도 컬럼명으로 코드 수정이 필요합니다.")
-
-    chunk['가맹시'] = chunk['가맹시'].astype(str)
+    # 시도 컬럼 이름 맞추기 (가맹점광역시도 또는 가맹시 사용)
+    if '가맹점광역시도' in chunk.columns:
+        chunk['SIDO_SHORT'] = chunk['가맹점광역시도'].astype(str)
+    elif '가맹시' in chunk.columns:
+        chunk['SIDO_SHORT'] = chunk['가맹시'].astype(str)
+    else:
+        raise ValueError("카드 데이터에 시도 컬럼이 없습니다. '가맹점광역시도' 또는 '가맹시' 컬럼명을 확인하세요.")
 
     # GB3 → 분석용 카테고리
     if 'GB3' not in chunk.columns:
