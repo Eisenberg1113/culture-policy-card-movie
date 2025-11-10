@@ -21,22 +21,19 @@ output_panel = os.path.join(DATA_DIR, "panel_sido_month.csv")
 chunksize = 500_000
 card_agg_list = []
 
-# 👉 GB3 → 분석용 상위 업종 그룹 매핑 (필요하면 네 GB3 값에 맞게 수정)
-def map_cat_gb3(gb3):
-    if pd.isna(gb3):
+# 👉 GB2 → 분석용 상위 업종 그룹 매핑
+def map_cat_gb2(gb2):
+    if pd.isna(gb2):
         return "OTHER"
 
-    gb3 = str(gb3)
-
-    if ("음식" in gb3) or ("외식" in gb3) or ("식당" in gb3) or ("카페" in gb3):
-        return "FNB"       # Food & Beverage
-    if "편의점" in gb3:
-        return "CVS"       # 편의점
-    if ("교통" in gb3) or ("주차" in gb3) or ("택시" in gb3):
-        return "TRANS"     # 교통
-    if ("문화" in gb3) or ("공연" in gb3) or ("영화" in gb3):
-        return "CULTURE"   # 문화/공연
+    if "외식" in gb2 or "음식" in gb2 or "식당" in gb2 or "카페" in gb2:
+        return "FNB"          # 식음료/외식
+    if "종합쇼핑" in gb2 or "패션쇼핑" in gb2 or "의류" in gb2:
+        return "SHOP"         # 쇼핑 (특히 종합+패션)
+    if "공연관람" in gb2 or "문화" in gb2:
+        return "CULTURE"      # 넓은 의미의 공연/문화
     return "OTHER"
+
 
 for chunk in pd.read_csv(
     card_file,
@@ -59,10 +56,10 @@ for chunk in pd.read_csv(
         raise ValueError("카드 데이터에 '가맹점광역시도' 컬럼이 없습니다. 실제 컬럼명을 다시 확인하세요.")
     chunk['SIDO_SHORT'] = chunk['가맹점광역시도'].astype(str)
 
-    # GB3 → 분석용 업종 그룹
-    if 'GB3' not in chunk.columns:
-        raise ValueError("카드 데이터에 'GB3' 컬럼이 없습니다.")
-    chunk['CAT_GRP'] = chunk['GB3'].apply(map_cat_gb3)
+    # GB2 → 분석용 업종 그룹
+    if 'GB2' not in chunk.columns:
+        raise ValueError("카드 데이터에 'GB2' 컬럼이 없습니다.")
+    chunk['CAT_GRP'] = chunk['GB2'].apply(map_cat_gb2)
 
     # 기본 집계 (시도×월×카테고리)
     grp = (chunk
@@ -99,7 +96,7 @@ card_pivot.columns.name = None  # 다중 인덱스 해제
 # 2. 극장 데이터 → 시도별 극장 수 / Treat 더미
 # =========================================
 
-# ⚠ 극장 CSV는 cp949인 것으로 보이니 cp949로 읽기
+# 극장 CSV는 cp949라 cp949로 읽기
 theater = pd.read_csv(theater_file, encoding="cp949")
 
 # 극장 데이터의 시도 컬럼: 'sido_nm' (예: 서울특별시, 경상북도 등)
