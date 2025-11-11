@@ -16,3 +16,15 @@ df = pd.read_csv(panel_file, encoding="utf-8-sig")
 print("컬럼들:", df.columns.tolist())
 print("\n상위 5행:")
 print(df.head())
+
+# =========================================
+# 1. 기간 필터 (선택: 2024~2025만)
+# =========================================
+
+df['TA_YM'] = df['TA_YM'].astype(str)
+
+df = df[(df['TA_YM'] >= '202401') & (df['TA_YM'] <= '202512')].copy()
+
+print("\n연월 범위:", df['TA_YM'].min(), " ~ ", df['TA_YM'].max())
+print("관측치 수:", len(df))
+
