@@ -204,7 +204,7 @@ if 'TRANS' in panel.columns:
 # =========================================
 
 print("\nNULL 값 제거")
-panel.dropna(subset=['TREAT_SIDO', 'BLOCKBUSTER_MONTH', 'logVLM_FNB'])
+panel = panel.dropna(subset=['TREAT_SIDO', 'BLOCKBUSTER_MONTH', 'logVLM_FNB'])
 
 print("\n[BLOCKBUSTER_MONTH × TREAT_SIDO 교차표]")
 print(pd.crosstab(panel['BLOCKBUSTER_MONTH'], panel['TREAT_SIDO'], dropna=False))
