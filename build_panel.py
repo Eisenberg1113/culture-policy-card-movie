@@ -156,7 +156,7 @@ movie['OPN_YM'] = movie['OPN_DE'].str.slice(0, 6)
 movie['TOT_SCRN_CO'] = pd.to_numeric(movie['TOT_SCRN_CO'], errors='coerce')
 
 # 블록버스터 기준 정하기 (예: 스크린 수 상위 20%)
-thr = movie['TOT_SCRN_CO'].quantile(0.8)
+thr = movie['TOT_SCRN_CO'].quantile(0.9)
 movie['IS_BLOCKBUSTER'] = (movie['TOT_SCRN_CO'] >= thr).astype(int)
 
 # 월별 블록버스터 개수/존재 여부 집계
