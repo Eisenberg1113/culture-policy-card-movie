@@ -44,4 +44,15 @@ print(df['DID'].value_counts(dropna=False))
 print("\n시도별 극장 수 요약:")
 print(df[['SIDO_SHORT', 'THEATER_CNT']].drop_duplicates().sort_values('THEATER_CNT'))
 
+print("\n월별 평균 블록버스터 평균 FNB:")
+print(
+    df.groupby('BLOCKBUSTER_MONTH')['FNB'].mean()
+)
+
+print("\nTreat vs Control 평균 지출:")
+print(
+    df.groupby('TREAT_SIDO')['FNB'].mean()
+)
+
+
 
