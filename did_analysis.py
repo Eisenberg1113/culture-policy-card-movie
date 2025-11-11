@@ -28,3 +28,20 @@ df = df[(df['TA_YM'] >= '202401') & (df['TA_YM'] <= '202512')].copy()
 print("\n연월 범위:", df['TA_YM'].min(), " ~ ", df['TA_YM'].max())
 print("관측치 수:", len(df))
 
+# =========================================
+# 2. 기본 분포 확인
+# =========================================
+
+print("\n극장 Treat 더미 (TREAT_SIDO):")
+print(df['TREAT_SIDO'].value_counts(dropna=False))
+
+print("\n블록버스터 월 여부 (BLOCKBUSTER_MONTH):")
+print(df['BLOCKBUSTER_MONTH'].value_counts(dropna=False))
+
+print("\nDID 상호작용 (TREAT_SIDO * BLOCKBUSTER_MONTH):")
+print(df['DID'].value_counts(dropna=False))
+
+print("\n시도별 극장 수 요약:")
+print(df[['SIDO_SHORT', 'THEATER_CNT']].drop_duplicates().sort_values('THEATER_CNT'))
+
+
