@@ -200,6 +200,15 @@ if 'TRANS' in panel.columns:
     panel['logVLM_TRANS'] = np.log(panel['TRANS'] + 1)
 
 # =========================================
+# 4-1. 블록버스터/극장 Treat 분포 체크 (디버그/요약)
+# =========================================
+print("\n[BLOCKBUSTER_MONTH × TREAT_SIDO 교차표]")
+print(pd.crosstab(panel['BLOCKBUSTER_MONTH'], panel['TREAT_SIDO'], dropna=False))
+
+print("\n[월별 블록버스터 비율]")
+print(panel.groupby('TA_YM')['BLOCKBUSTER_MONTH'].mean())
+
+# =========================================
 # 5. 결과 저장
 # =========================================
 
