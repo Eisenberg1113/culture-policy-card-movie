@@ -159,6 +159,14 @@ movie['TOT_SCRN_CO'] = pd.to_numeric(movie['TOT_SCRN_CO'], errors='coerce')
 thr = movie['TOT_SCRN_CO'].quantile(0.95)
 movie['IS_BLOCKBUSTER'] = (movie['TOT_SCRN_CO'] >= thr).astype(int)
 
+top_movies = (
+    movie[movie['TOT_SCRN_CO'] >= thr]
+    [['MOVIE_NM', 'OPN_DE', 'TOT_SCRN_CO', 'GENRE_NM', 'GRAD_NM']]
+    .sort_values('TOT_SCRN_CO', ascending=False)
+)
+print("\n[스크린 수 상위 5% 영화 목록]")
+print(top_movies.head(50))  # 필요하면 숫자 늘려도 됨
+
 # 월별 블록버스터 개수/존재 여부 집계
 bb_month = (movie
             .groupby('OPN_YM', as_index=False)
@@ -166,6 +174,8 @@ bb_month = (movie
                 BB_MOVIE_CNT=('IS_BLOCKBUSTER', 'sum')
             ))
 bb_month['BLOCKBUSTER_MONTH'] = (bb_month['BB_MOVIE_CNT'] > 0).astype(int)
+
+movie['IS_BLOCKBUSTER'] = (movie['TOT_SCRN_CO'] >= thr).astype(int)
 
 # =========================================
 # 4. 시도×월 패널 조인 (카드 + 극장 + 블록버스터)
