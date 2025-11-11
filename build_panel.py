@@ -200,8 +200,12 @@ if 'TRANS' in panel.columns:
     panel['logVLM_TRANS'] = np.log(panel['TRANS'] + 1)
 
 # =========================================
-# 4-1. 블록버스터/극장 Treat 분포 체크 (디버그/요약)
+# 4-1. 블록버스터/극장 Treat 분포 체크 (디버그/요약) 및 결측치 제거
 # =========================================
+
+print("\nNULL 값 제거")
+panel.dropna(subset=['TREAT_SIDO', 'BLOCKBUSTER_MONTH', 'logVLM_FNB'])
+
 print("\n[BLOCKBUSTER_MONTH × TREAT_SIDO 교차표]")
 print(pd.crosstab(panel['BLOCKBUSTER_MONTH'], panel['TREAT_SIDO'], dropna=False))
 
