@@ -32,27 +32,22 @@ print("관측치 수:", len(df))
 # 2. 기본 분포 확인
 # =========================================
 
-print("\n극장 Treat 더미 (TREAT_SIDO):")
-print(df['TREAT_SIDO'].value_counts(dropna=False))
+# 범주형으로 처리해줄 열들
+df['SIDO_SHORT'] = df['SIDO_SHORT'].astype('category')
+df['TA_YM'] = df['TA_YM'].astype('category')
 
-print("\n블록버스터 월 여부 (BLOCKBUSTER_MONTH):")
-print(df['BLOCKBUSTER_MONTH'].value_counts(dropna=False))
+# 혹시 logVLM_FNB 없으면 직접 만들기
+if 'logVLM_FNB' not in df.columns:
+    df['logVLM_FNB'] = (df['FNB'] + 1).apply(np.log)
 
-print("\nDID 상호작용 (TREAT_SIDO * BLOCKBUSTER_MONTH):")
-print(df['DID'].value_counts(dropna=False))
-
-print("\n시도별 극장 수 요약:")
-print(df[['SIDO_SHORT', 'THEATER_CNT']].drop_duplicates().sort_values('THEATER_CNT'))
-
-print("\n월별 평균 블록버스터 평균 FNB:")
-print(
-    df.groupby('BLOCKBUSTER_MONTH')['FNB'].mean()
+# 기본 DID 회귀
+model = smf.ols(
+    'logVLM_FNB ~ DID + C(SIDO_SHORT) + C(TA_YM)',
+    data=df
 )
+res = model.fit(cov_type='HC3')  # 이분산 견고표준오차
 
-print("\nTreat vs Control 평균 지출:")
-print(
-    df.groupby('TREAT_SIDO')['FNB'].mean()
-)
+print(res.summary())
 
 
 
