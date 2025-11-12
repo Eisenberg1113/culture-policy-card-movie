@@ -124,7 +124,7 @@ def normalize_sido_long_to_short(x: str) -> str:
         if len(base) >= 3 and base.endswith(('북', '남')):
             return base[-2:]   # '경상북' -> '경북'
         return base
-    return x
+    return x    
 
 theater['SIDO_SHORT'] = theater['sido_nm'].apply(normalize_sido_long_to_short)
 
@@ -140,42 +140,35 @@ gu_theater['TREAT_SIDO'] = (gu_theater['THEATER_CNT'] >= med_cnt).astype(int)
 # 3. 영화/박스오피스 → 블록버스터 개봉월 플래그
 # =========================================
 
-# 영화 통합 파일은 네가 utf-8-sig로 만들었을 가능성이 크니 우선 이걸 사용
+# 3. 영화/박스오피스 → 블록버스터 개봉월 플래그 (관객 수 300만 기준)
+
 movie = pd.read_csv(movie_file, encoding="utf-8-sig")
 
 # 필수 컬럼 체크
-for col in ['OPN_DE', 'TOT_SCRN_CO']:
+for col in ['OPN_DE', 'VIEWNG_NMPR_CO']:
     if col not in movie.columns:
-        raise ValueError(f"영화 데이터에 '{col}' 컬럼이 없습니다. 실제 컬럼명을 확인하세요.")
+        raise ValueError(f"영화 데이터에 '{col}' 컬럼이 없습니다.")
 
 # 개봉월 (YYYYMM) 추출
 movie['OPN_DE'] = movie['OPN_DE'].astype(str)
 movie['OPN_YM'] = movie['OPN_DE'].str.slice(0, 6)
 
-# TOT_SCRN_CO 숫자형으로 변환 (혹시 문자열이면)
-movie['TOT_SCRN_CO'] = pd.to_numeric(movie['TOT_SCRN_CO'], errors='coerce')
+# ✅ 블록버스터 기준: 관객 수 300만 이상
+BLOCKBUSTER_VIEWERS_THRESHOLD = 3_000_000
 
-# 블록버스터 기준 정하기 (예: 스크린 수 상위 20%)
-thr = movie['TOT_SCRN_CO'].quantile(0.95)
-movie['IS_BLOCKBUSTER'] = (movie['TOT_SCRN_CO'] >= thr).astype(int)
-
-top_movies = (
-    movie[movie['TOT_SCRN_CO'] >= thr]
-    [['MOVIE_NM', 'OPN_DE', 'TOT_SCRN_CO', 'GENRE_NM', 'GRAD_NM']]
-    .sort_values('TOT_SCRN_CO', ascending=False)
-)
-print("\n[스크린 수 상위 5% 영화 목록]")
-print(top_movies.head(50))  # 필요하면 숫자 늘려도 됨
+movie['IS_BLOCKBUSTER'] = (movie['VIEWNG_NMPR_CO'] >= BLOCKBUSTER_VIEWERS_THRESHOLD).astype(int)
 
 # 월별 블록버스터 개수/존재 여부 집계
-bb_month = (movie
-            .groupby('OPN_YM', as_index=False)
-            .agg(
-                BB_MOVIE_CNT=('IS_BLOCKBUSTER', 'sum')
-            ))
+bb_month = (
+    movie
+    .groupby('OPN_YM', as_index=False)
+    .agg(
+        BB_MOVIE_CNT=('IS_BLOCKBUSTER', 'sum'),
+        BB_VIEWERS_SUM=('VIEWNG_NMPR_CO', lambda x: x[movie.loc[x.index, 'IS_BLOCKBUSTER'] == 1].sum())
+    )
+)
 bb_month['BLOCKBUSTER_MONTH'] = (bb_month['BB_MOVIE_CNT'] > 0).astype(int)
 
-movie['IS_BLOCKBUSTER'] = (movie['TOT_SCRN_CO'] >= thr).astype(int)
 
 # =========================================
 # 4. 시도×월 패널 조인 (카드 + 극장 + 블록버스터)
@@ -217,7 +210,12 @@ print("\nNULL 값 제거")
 panel = panel.dropna(subset=['TREAT_SIDO', 'BLOCKBUSTER_MONTH', 'logVLM_FNB'])
 
 print("\n[BLOCKBUSTER_MONTH × TREAT_SIDO 교차표]")
-print(pd.crosstab(panel['BLOCKBUSTER_MONTH'], panel['TREAT_SIDO'], dropna=False))
+print(panel['BLOCKBUSTER_MONTH'].value_counts())
+print(pd.crosstab(panel['BLOCKBUSTER_MONTH'], panel['TREAT_SIDO']))
+
+print("\n[상위 20개 영화별 관객수]")
+print(movie[['MOVIE_NM', 'VIEWNG_NMPR_CO']].sort_values('VIEWNG_NMPR_CO', ascending=False).head(20))
+
 
 print("\n[월별 블록버스터 비율]")
 print(panel.groupby('TA_YM')['BLOCKBUSTER_MONTH'].mean())
