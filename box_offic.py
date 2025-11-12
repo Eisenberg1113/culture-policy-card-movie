@@ -182,4 +182,4 @@ print(cross_hits.head(20))
 
 
 print("\n[월별 블록버스터 요약 샘플]")
-print(bb_month.head(12))
+print(bb_month.head(24))
