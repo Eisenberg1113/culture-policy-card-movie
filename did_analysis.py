@@ -1,54 +1,69 @@
-import os
 import pandas as pd
 import numpy as np
 import statsmodels.formula.api as smf
 
-# =========================================
-# 0. 패널 데이터 불러오기
-# =========================================
+panel = pd.read_csv("data/panel_sido_month.csv", dtype={"TA_YM": str})
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))   # 현재 파일이 있는 폴더 (레포 루트)
-DATA_DIR = os.path.join(BASE_DIR, "data")
+# 기본 QA
+print(panel.shape, panel.columns.tolist())
+print(panel.isna().mean().sort_values(ascending=False).head(10))
+print(panel[['SIDO_SHORT','TA_YM']].duplicated().sum(), "중복 rows")
 
-panel_file = os.path.join(DATA_DIR, "panel_sido_month.csv")
+# 월 순서 정렬
+panel = panel.sort_values(['SIDO_SHORT','TA_YM']).reset_index(drop=True)
 
-df = pd.read_csv(panel_file, encoding="utf-8-sig")
+# 로그 타깃 보강(혹시 없으면 생성)
+for col in ['FNB','SHOP','CULTURE']:
+    if col in panel.columns and f'logVLM_{col}' not in panel.columns:
+        panel[f'logVLM_{col}'] = np.log(panel[col].clip(lower=0) + 1)
 
-print("컬럼들:", df.columns.tolist())
-print("\n상위 5행:")
-print(df.head())
+# 분석에 꼭 필요한 열 결측 제거
+need = ['SIDO_SHORT','TA_YM','TREAT_SIDO','BLOCKBUSTER_MONTH','logVLM_FNB']
+panel = panel.dropna(subset=[c for c in need if c in panel.columns]).copy()
 
-# =========================================
-# 1. 기간 필터 (선택: 2024~2025만)
-# =========================================
+print(pd.crosstab(panel['BLOCKBUSTER_MONTH'], panel['TREAT_SIDO']))
+print(panel.groupby('TA_YM')['BLOCKBUSTER_MONTH'].mean().rename('BB_rate_by_month'))
 
-df['TA_YM'] = df['TA_YM'].astype(str)
 
-df = df[(df['TA_YM'] >= '202401') & (df['TA_YM'] <= '202512')].copy()
+# 카테고리형으로 명시
+panel['SIDO_SHORT'] = panel['SIDO_SHORT'].astype('category')
+panel['TA_YM'] = panel['TA_YM'].astype('category')
 
-print("\n연월 범위:", df['TA_YM'].min(), " ~ ", df['TA_YM'].max())
-print("관측치 수:", len(df))
+# 기본 DID: logVLM_FNB ~ DID + 지역FE + 월FE
+m1 = smf.ols(
+    formula="logVLM_FNB ~ DID + C(SIDO_SHORT) + C(TA_YM)",
+    data=panel
+).fit(cov_type='cluster', cov_kwds={'groups': panel['SIDO_SHORT']})
+print(m1.summary())
 
-# =========================================
-# 2. 기본 분포 확인
-# =========================================
+did_pct = np.exp(m1.params['DID']) - 1
+print("DID 효과(%) ≈", did_pct*100)
 
-# 범주형으로 처리해줄 열들
-df['SIDO_SHORT'] = df['SIDO_SHORT'].astype('category')
-df['TA_YM'] = df['TA_YM'].astype('category')
+targets = [c for c in ['logVLM_SHOP','logVLM_CULTURE'] if c in panel.columns]
+for y in targets:
+    m = smf.ols(formula=f"{y} ~ DID + C(SIDO_SHORT) + C(TA_YM)",
+                data=panel).fit(cov_type='cluster', cov_kwds={'groups': panel['SIDO_SHORT']})
+    print(f"\n== {y} 결과 ==")
+    print(m.summary().tables[1])
 
-# 혹시 logVLM_FNB 없으면 직접 만들기
-if 'logVLM_FNB' not in df.columns:
-    df['logVLM_FNB'] = (df['FNB'] + 1).apply(np.log)
+# 동태 효과 계산
+panel['TA_YM_num'] = panel['TA_YM'].astype(int)
+bb_set = set(panel.loc[panel['BLOCKBUSTER_MONTH']==1,'TA_YM_num'])
 
-# 기본 DID 회귀
-model = smf.ols(
-    'logVLM_FNB ~ DID + C(SIDO_SHORT) + C(TA_YM)',
-    data=df
-)
-res = model.fit(cov_type='HC3')  # 이분산 견고표준오차
+panel['BB_LAG1']  = panel['TA_YM_num'].apply(lambda x: 1 if (x-1) in bb_set else 0)
+panel['BB_LEAD1'] = panel['TA_YM_num'].apply(lambda x: 1 if (x+1) in bb_set else 0)
 
-print(res.summary())
+for var in ['BB_LAG1','BB_LEAD1']:
+    panel[f'DID_{var}'] = panel['TREAT_SIDO'] * panel[var]
 
+m_es = smf.ols("logVLM_FNB ~ DID + DID_BB_LAG1 + DID_BB_LEAD1 + C(SIDO_SHORT) + C(TA_YM)",
+               data=panel).fit(cov_type='cluster', cov_kwds={'groups': panel['SIDO_SHORT']})
+print(m_es.summary().tables[1])
+
+# 강건성 체크(서울/경기 제외)
+mask = ~panel['SIDO_SHORT'].isin(['서울','경기'])
+m2 = smf.ols("logVLM_FNB ~ DID + C(SIDO_SHORT) + C(TA_YM)", data=panel[mask])\
+       .fit(cov_type='cluster', cov_kwds={'groups': panel[mask]['SIDO_SHORT']})
+print(m2.summary().tables[1])
 
 
