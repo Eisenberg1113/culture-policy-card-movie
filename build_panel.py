@@ -1,232 +1,216 @@
+# build_panel.py
 import os
 import pandas as pd
 import numpy as np
 
 # =========================================
-# 0. 파일 경로 설정 (레포 루트 기준)
+# 0. 경로 설정 (레포 루트 기준)
 # =========================================
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))   # 여기 = 레포 루트
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 
-# 파일명들 (네가 말한 걸로 반영)
 card_file    = os.path.join(DATA_DIR, "card_2024_2025_only.csv")
-theater_file = os.path.join(DATA_DIR, "KC_497_DMSTC_MCST_THEART_2025.csv")
-movie_file   = os.path.join(DATA_DIR, "movie_monthly_cumulative.csv")
+theater_file = os.path.join(DATA_DIR, "KC_497_DMSTC_MCST_THEART_2025.csv")  # cp949
+movie_file   = os.path.join(DATA_DIR, "movie_monthly_cumulative.csv")       # utf-8-sig
 output_panel = os.path.join(DATA_DIR, "panel_sido_month.csv")
 
 # =========================================
-# 1. 카드데이터 전처리 + 시도×월×업종 집계
+# 1) 카드: GB2 → 분석 카테고리 매핑 후 시도×월 집계
 # =========================================
-
 chunksize = 500_000
 card_agg_list = []
 
-# 👉 GB2 → 분석용 상위 업종 그룹 매핑
-def map_cat_gb2(gb2):
+def map_cat_gb2(gb2: str) -> str:
     if pd.isna(gb2):
         return "OTHER"
-
-    if "외식" in gb2 or "음식" in gb2 or "식당" in gb2 or "카페" in gb2:
+    s = str(gb2)
+    if ("외식" in s) or ("음식" in s) or ("식당" in s) or ("카페" in s):
         return "FNB"          # 식음료/외식
-    if "종합쇼핑" in gb2 or "패션쇼핑" in gb2 or "의류" in gb2:
-        return "SHOP"         # 쇼핑 (특히 종합+패션)
-    if "공연관람" in gb2 or "문화" in gb2:
-        return "CULTURE"      # 넓은 의미의 공연/문화
+    if ("종합쇼핑" in s) or ("패션쇼핑" in s) or ("의류" in s) or ("패션" in s) or ("쇼핑" in s):
+        return "SHOP"         # 쇼핑(종합+패션)
+    if ("공연관람" in s) or ("문화" in s) or ("공연" in s) or ("영화" in s):
+        return "CULTURE"      # 공연/문화(영화 포함 넓게)
     return "OTHER"
 
+required_card_cols = ["TA_YM", "가맹점광역시도", "GB2", "VLM", "USEC"]
+# 큰 파일이니 청크로 읽음
+for chunk in pd.read_csv(card_file, chunksize=chunksize, encoding="utf-8-sig", engine="python"):
+    missing = [c for c in required_card_cols if c not in chunk.columns]
+    if missing:
+        raise ValueError(f"카드 데이터에 필요한 컬럼이 없습니다: {missing}")
 
-for chunk in pd.read_csv(
-    card_file,
-    chunksize=chunksize,
-    encoding="utf-8-sig",
-    engine="python"
-):
-    # TA_YM 문자열로 맞추기
-    if 'TA_YM' not in chunk.columns:
-        raise ValueError("카드 데이터에 'TA_YM' 컬럼이 없습니다. 컬럼명을 확인하세요.")
-    chunk['TA_YM'] = chunk['TA_YM'].astype(str)
-
-    # 분석 기간: 2024-01 ~ 2025-12만 사용
-    chunk = chunk[(chunk['TA_YM'] >= '202401') & (chunk['TA_YM'] <= '202512')]
+    # 기간 필터: 2024-01 ~ 2025-12
+    chunk["TA_YM"] = chunk["TA_YM"].astype(str)
+    chunk = chunk[(chunk["TA_YM"] >= "202401") & (chunk["TA_YM"] <= "202512")]
     if chunk.empty:
         continue
 
-    # 시도 컬럼: '가맹점광역시도' 사용
-    if '가맹점광역시도' not in chunk.columns:
-        raise ValueError("카드 데이터에 '가맹점광역시도' 컬럼이 없습니다. 실제 컬럼명을 다시 확인하세요.")
-    chunk['SIDO_SHORT'] = chunk['가맹점광역시도'].astype(str)
+    chunk["SIDO_SHORT"] = chunk["가맹점광역시도"].astype(str)
+    chunk["CAT_GRP"] = chunk["GB2"].apply(map_cat_gb2)
 
-    # GB2 → 분석용 업종 그룹
-    if 'GB2' not in chunk.columns:
-        raise ValueError("카드 데이터에 'GB2' 컬럼이 없습니다.")
-    chunk['CAT_GRP'] = chunk['GB2'].apply(map_cat_gb2)
-
-    # 기본 집계 (시도×월×카테고리)
     grp = (chunk
-           .groupby(['SIDO_SHORT', 'TA_YM', 'CAT_GRP'], as_index=False)
-           .agg(
-               VLM=('VLM', 'sum'),
-               USEC=('USEC', 'sum')
-           ))
+           .groupby(["SIDO_SHORT", "TA_YM", "CAT_GRP"], as_index=False)
+           .agg(VLM=("VLM", "sum"), USEC=("USEC", "sum")))
     card_agg_list.append(grp)
 
-# 조각들 합치기
+if not card_agg_list:
+    raise ValueError("카드 데이터에서 기간 조건에 맞는 레코드가 없습니다. TA_YM/파일 경로를 확인하세요.")
+
 card_agg = pd.concat(card_agg_list, ignore_index=True)
-
-# 다시 한 번 전체 집계 (혹시 중복 있을 수 있으니)
 card_agg = (card_agg
-            .groupby(['SIDO_SHORT', 'TA_YM', 'CAT_GRP'], as_index=False)
-            .agg(
-                VLM=('VLM', 'sum'),
-                USEC=('USEC', 'sum')
-            ))
+            .groupby(["SIDO_SHORT", "TA_YM", "CAT_GRP"], as_index=False)
+            .agg(VLM=("VLM", "sum"), USEC=("USEC", "sum")))
 
-# 피벗: 시도×월 기준으로 FNB/CVS/TRANS 등을 컬럼으로
-card_pivot = card_agg.pivot_table(
-    index=['SIDO_SHORT', 'TA_YM'],
-    columns='CAT_GRP',
-    values='VLM',
-    aggfunc='sum',
-    fill_value=0
-).reset_index()
-
-card_pivot.columns.name = None  # 다중 인덱스 해제
+# 시도×월 피벗 (금액 VLM 기준)
+card_pivot_vlm = (card_agg
+                  .pivot_table(index=["SIDO_SHORT", "TA_YM"],
+                               columns="CAT_GRP",
+                               values="VLM",
+                               aggfunc="sum",
+                               fill_value=0)
+                  .reset_index())
+card_pivot_vlm.columns.name = None
 
 # =========================================
-# 2. 극장 데이터 → 시도별 극장 수 / Treat 더미
+# 2) 극장: 시도별 극장 수 집계 + Treat 더미
+#    (파일 인코딩: cp949)
 # =========================================
-
-# 극장 CSV는 cp949라 cp949로 읽기
 theater = pd.read_csv(theater_file, encoding="cp949")
 
-# 극장 데이터의 시도 컬럼: 'sido_nm' (예: 서울특별시, 경상북도 등)
-if 'sido_nm' not in theater.columns:
-    raise ValueError("극장 데이터에 'sido_nm' 컬럼이 없습니다. 실제 컬럼명을 확인하세요.")
+if "sido_nm" not in theater.columns:
+    raise ValueError("극장 데이터에 'sido_nm' 컬럼이 없습니다.")
 
 def normalize_sido_long_to_short(x: str) -> str:
-    """
-    '서울특별시' -> '서울', '경상북도' -> '경북' 형태로 줄이기
-    (카드데이터 SIDO_SHORT='서울','경북' 등과 맞추기 위함)
-    """
-    if pd.isna(x):
-        return x
+    if pd.isna(x): return x
     x = str(x)
-    if x.endswith('특별시'):
-        return x[:-3]
-    if x.endswith('광역시'):
-        return x[:-3]
-    if x.endswith('특별자치시'):
-        return x[:-5]
-    if x.endswith('특별자치도'):
-        return x[:-5]
-    if x.endswith('도'):
+    if x.endswith("특별시"):     return x[:-3]
+    if x.endswith("광역시"):     return x[:-3]
+    if x.endswith("특별자치시"): return x[:-5]
+    if x.endswith("특별자치도"): return x[:-5]
+    if x.endswith("도"):
         base = x[:-1]
-        if len(base) >= 3 and base.endswith(('북', '남')):
-            return base[-2:]   # '경상북' -> '경북'
+        if len(base) >= 3 and base.endswith(("북", "남")):
+            return base[-2:]   # 경상북 -> 경북
         return base
-    return x    
+    return x
 
-theater['SIDO_SHORT'] = theater['sido_nm'].apply(normalize_sido_long_to_short)
+theater["SIDO_SHORT"] = theater["sido_nm"].apply(normalize_sido_long_to_short)
 
-gu_theater = (theater
-              .groupby('SIDO_SHORT', as_index=False)
-              .agg(THEATER_CNT=('id_poi', 'nunique')))
+id_col = "id_poi" if "id_poi" in theater.columns else theater.columns[0]
+gu_theater = (theater.groupby("SIDO_SHORT", as_index=False)
+              .agg(THEATER_CNT=(id_col, "nunique")))
 
-# Treat 구분: 극장 수 중앙값 이상이면 1, 아니면 0
-med_cnt = gu_theater['THEATER_CNT'].median()
-gu_theater['TREAT_SIDO'] = (gu_theater['THEATER_CNT'] >= med_cnt).astype(int)
+med_cnt = gu_theater["THEATER_CNT"].median()
+gu_theater["TREAT_SIDO"] = (gu_theater["THEATER_CNT"] >= med_cnt).astype(int)
 
 # =========================================
-# 3. 영화/박스오피스 → 블록버스터 개봉월 플래그
+# 3) 영화: 월별 블록버스터 요약 (누적 관객 300만 기준)
+#    입력: movie_monthly_cumulative.csv (월별 누적 관객/매출 포함)
+#    기대 컬럼:
+#      - MOVIE_NM, YM(YYYYMM), VIEWNG_NMPR_CO(해당월 관객),
+#        cum_viewers(누적 관객), SALES_PRICE(해당월 매출), cum_sales(누적 매출),
+#        IS_BLOCKBUSTER_MOVIE(누적≥300만이면 1), IS_CROSS_MONTH(해당월에 300만 돌파면 1)
 # =========================================
-
-# 3. 영화/박스오피스 → 블록버스터 개봉월 플래그 (관객 수 300만 기준)
-
 movie = pd.read_csv(movie_file, encoding="utf-8-sig")
 
-# 필수 컬럼 체크
-for col in ['OPN_DE', 'VIEWNG_NMPR_CO']:
-    if col not in movie.columns:
-        raise ValueError(f"영화 데이터에 '{col}' 컬럼이 없습니다.")
+# 컬럼 이름 방어적으로 매핑
+col_map = {}
+for want in ["MOVIE_NM", "YM", "VIEWNG_NMPR_CO", "SALES_PRICE",
+             "cum_viewers", "cum_sales",
+             "IS_BLOCKBUSTER_MOVIE", "IS_CROSS_MONTH"]:
+    if want not in movie.columns:
+        # 대소문자/유사명 처리
+        cand = [c for c in movie.columns if c.lower() == want.lower()]
+        if cand:
+            col_map[cand[0]] = want
+movie = movie.rename(columns=col_map)
 
-# 개봉월 (YYYYMM) 추출
-movie['OPN_DE'] = movie['OPN_DE'].astype(str)
-movie['OPN_YM'] = movie['OPN_DE'].str.slice(0, 6)
+required_movie = ["MOVIE_NM", "YM", "IS_BLOCKBUSTER_MOVIE", "IS_CROSS_MONTH"]
+missing_movie = [c for c in required_movie if c not in movie.columns]
+if missing_movie:
+    raise ValueError(f"영화 데이터에 필요한 컬럼이 없습니다: {missing_movie}")
 
-# ✅ 블록버스터 기준: 관객 수 300만 이상
-BLOCKBUSTER_VIEWERS_THRESHOLD = 3_000_000
+# YM 정규화
+movie["YM"] = movie["YM"].astype(str).str[:6]
 
-movie['IS_BLOCKBUSTER'] = (movie['VIEWNG_NMPR_CO'] >= BLOCKBUSTER_VIEWERS_THRESHOLD).astype(int)
+# 월별 ‘300만 임계 돌파’ 횟수: IS_CROSS_MONTH의 합
+cross_month = (movie.groupby("YM", as_index=False)
+               .agg(BB_MOVIE_CNT_CROSS=("IS_CROSS_MONTH", "sum")))
 
-# 월별 블록버스터 개수/존재 여부 집계
-bb_month = (
-    movie.groupby("OPN_YM", as_index=False)
-    .agg(
-        BB_MOVIE_CNT_CROSS    = ("IS_CROSS_MONTH", "sum"),           # 임계 '돌파'가 발생한 영화 수
-        BB_MOVIE_CNT_PRESENCE = ("IS_BLOCKBUSTER_MOVIE", "sum"),     # 블록버스터로 분류된 영화들이 '존재'한 수(중복 카운트)
-        VIEWERS_SUM           = ("VIEWNG_NMPR_CO", "sum"),
-        SALES_SUM             = ("SALES_PRICE", "sum")
-    )
-    .sort_values("OPN_YM")
-)
-bb_month['BLOCKBUSTER_MONTH'] = (bb_month['BB_MOVIE_CNT'] > 0).astype(int)
+# 월별 ‘블록버스터 존재’ 수(해당 월에 상영 중인 300만 달성 영화의 "제목" 기준 고유 개수)
+bb_presence = (movie[movie["IS_BLOCKBUSTER_MOVIE"] == 1]
+               .groupby(["YM", "MOVIE_NM"], as_index=False)
+               .agg(any_flag=("IS_BLOCKBUSTER_MOVIE", "max"))
+               .groupby("YM", as_index=False)
+               .agg(BB_MOVIE_CNT_PRESENCE=("MOVIE_NM", "nunique")))
+
+# 월별 합계(옵션): 관객·매출
+sum_cols = {}
+if "VIEWNG_NMPR_CO" in movie.columns:
+    sum_cols["VIEWERS_SUM"] = ("VIEWNG_NMPR_CO", "sum")
+if "SALES_PRICE" in movie.columns:
+    sum_cols["SALES_SUM"] = ("SALES_PRICE", "sum")
+
+month_sums = None
+if sum_cols:
+    month_sums = movie.groupby("YM", as_index=False).agg(**sum_cols)
+
+# 월별 요약 병합
+bb_month = cross_month.merge(bb_presence, on="YM", how="outer").fillna(0)
+if month_sums is not None:
+    bb_month = bb_month.merge(month_sums, on="YM", how="left").fillna(0)
+
+bb_month["BLOCKBUSTER_MONTH"] = (bb_month["BB_MOVIE_CNT_PRESENCE"] > 0).astype(int)
 
 # =========================================
-# 4. 시도×월 패널 조인 (카드 + 극장 + 블록버스터)
+# 4) 패널 조인 (카드 × 극장 × 블록버스터)
 # =========================================
+panel = card_pivot_vlm.copy()  # SIDO_SHORT, TA_YM, [CULTURE, FNB, SHOP, OTHER ...]
 
-panel = card_pivot.copy()  # SIDO_SHORT, TA_YM, FNB/CVS/...
+# 극장 조인
+panel = panel.merge(gu_theater, on="SIDO_SHORT", how="left")
 
-# 극장 정보 조인 (SIDO_SHORT 기준)
-panel = panel.merge(gu_theater, on='SIDO_SHORT', how='left')
-
-# 블록버스터 월 조인 (TA_YM ↔ OPN_YM)
+# 블록버스터 조인 (TA_YM ↔ YM)
 panel = panel.merge(
-    bb_month[['OPN_YM', 'BB_MOVIE_CNT', 'BLOCKBUSTER_MONTH']],
-    left_on='TA_YM',
-    right_on='OPN_YM',
-    how='left'
+    bb_month[["YM", "BB_MOVIE_CNT_CROSS", "BB_MOVIE_CNT_PRESENCE", "BLOCKBUSTER_MONTH"]],
+    left_on="TA_YM",
+    right_on="YM",
+    how="left"
 )
 
-# 블록버스터 정보 없는 월(개봉 영화 없을 수도 있음)은 0으로
-panel['BB_MOVIE_CNT'] = panel['BB_MOVIE_CNT'].fillna(0).astype(int)
-panel['BLOCKBUSTER_MONTH'] = panel['BLOCKBUSTER_MONTH'].fillna(0).astype(int)
+# 결측 채움
+for c in ["BB_MOVIE_CNT_CROSS", "BB_MOVIE_CNT_PRESENCE", "BLOCKBUSTER_MONTH"]:
+    panel[c] = panel[c].fillna(0).astype(int)
 
-# DID 상호작용 변수
-panel['DID'] = panel['TREAT_SIDO'] * panel['BLOCKBUSTER_MONTH']
+# DID
+panel["DID"] = panel["TREAT_SIDO"] * panel["BLOCKBUSTER_MONTH"]
 
-# 로그 변환 예시 (FNB / CVS / TRANS 매출 기준)
-if 'FNB' in panel.columns:
-    panel['logVLM_FNB'] = np.log(panel['FNB'] + 1)
-if 'CVS' in panel.columns:
-    panel['logVLM_CVS'] = np.log(panel['CVS'] + 1)
-if 'TRANS' in panel.columns:
-    panel['logVLM_TRANS'] = np.log(panel['TRANS'] + 1)
+# 로그 파생: FNB/SHOP/CULTURE 중 존재하는 것만 생성
+if "FNB" in panel.columns:
+    panel["logVLM_FNB"] = np.log(panel["FNB"] + 1)
+if "SHOP" in panel.columns:
+    panel["logVLM_SHOP"] = np.log(panel["SHOP"] + 1)
+if "CULTURE" in panel.columns:
+    panel["logVLM_CULTURE"] = np.log(panel["CULTURE"] + 1)
+
+# 분석 전에 NaN 최소화
+panel = panel.dropna(subset=["TREAT_SIDO", "BLOCKBUSTER_MONTH"])
 
 # =========================================
-# 4-1. 블록버스터/극장 Treat 분포 체크 (디버그/요약) 및 결측치 제거
+# 5) 저장 + 간단 요약 출력
 # =========================================
+panel.to_csv(output_panel, index=False, encoding="utf-8-sig")
+print("✅ 패널 저장 완료:", output_panel)
 
-print("\nNULL 값 제거")
-panel = panel.dropna(subset=['TREAT_SIDO', 'BLOCKBUSTER_MONTH', 'logVLM_FNB'])
+print("\n[샘플 8행]")
+cols_show = [c for c in ["SIDO_SHORT","TA_YM","CULTURE","FNB","SHOP",
+                         "THEATER_CNT","TREAT_SIDO",
+                         "BB_MOVIE_CNT_CROSS","BB_MOVIE_CNT_PRESENCE","BLOCKBUSTER_MONTH",
+                         "DID","logVLM_FNB","logVLM_SHOP","logVLM_CULTURE"] if c in panel.columns]
+print(panel[cols_show].head(8))
 
 print("\n[BLOCKBUSTER_MONTH × TREAT_SIDO 교차표]")
-print(panel['BLOCKBUSTER_MONTH'].value_counts())
-print(pd.crosstab(panel['BLOCKBUSTER_MONTH'], panel['TREAT_SIDO']))
-
-print("\n[상위 20개 영화별 관객수]")
-print(movie[['MOVIE_NM', 'VIEWNG_NMPR_CO']].sort_values('VIEWNG_NMPR_CO', ascending=False).head(20))
-
+print(pd.crosstab(panel["BLOCKBUSTER_MONTH"], panel["TREAT_SIDO"]))
 
 print("\n[월별 블록버스터 비율]")
-print(panel.groupby('TA_YM')['BLOCKBUSTER_MONTH'].mean())
-
-# =========================================
-# 5. 결과 저장
-# =========================================
-
-panel.to_csv(output_panel, index=False, encoding="utf-8-sig")
-print("패널 데이터 저장 완료:", output_panel)
-
-print("\n패널 샘플 10행:")
-print(panel.head(10))
+print(panel.groupby("TA_YM")["BLOCKBUSTER_MONTH"].mean())
