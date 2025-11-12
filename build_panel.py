@@ -11,7 +11,7 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 # 파일명들 (네가 말한 걸로 반영)
 card_file    = os.path.join(DATA_DIR, "card_2024_2025_only.csv")
 theater_file = os.path.join(DATA_DIR, "KC_497_DMSTC_MCST_THEART_2025.csv")
-movie_file   = os.path.join(DATA_DIR, "BOX_OFFIC_MOVIE_2024_2025_ALL.csv")
+movie_file   = os.path.join(DATA_DIR, "movie_monthly_cumulative.csv")
 output_panel = os.path.join(DATA_DIR, "panel_sido_month.csv")
 
 # =========================================
