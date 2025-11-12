@@ -160,15 +160,16 @@ movie['IS_BLOCKBUSTER'] = (movie['VIEWNG_NMPR_CO'] >= BLOCKBUSTER_VIEWERS_THRESH
 
 # 월별 블록버스터 개수/존재 여부 집계
 bb_month = (
-    movie.groupby("YM", as_index=False)
+    movie.groupby("OPN_YM", as_index=False)
     .agg(
         BB_MOVIE_CNT_CROSS    = ("IS_CROSS_MONTH", "sum"),           # 임계 '돌파'가 발생한 영화 수
         BB_MOVIE_CNT_PRESENCE = ("IS_BLOCKBUSTER_MOVIE", "sum"),     # 블록버스터로 분류된 영화들이 '존재'한 수(중복 카운트)
         VIEWERS_SUM           = ("VIEWNG_NMPR_CO", "sum"),
         SALES_SUM             = ("SALES_PRICE", "sum")
     )
-    .sort_values("YM")
+    .sort_values("OPN_YM")
 )
+bb_month['BLOCKBUSTER_MONTH'] = (bb_month['BB_MOVIE_CNT'] > 0).astype(int)
 
 # =========================================
 # 4. 시도×월 패널 조인 (카드 + 극장 + 블록버스터)
