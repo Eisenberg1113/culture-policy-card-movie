@@ -160,7 +160,7 @@ bb_month = cross_month.merge(bb_presence, on="YM", how="outer").fillna(0)
 if month_sums is not None:
     bb_month = bb_month.merge(month_sums, on="YM", how="left").fillna(0)
 
-bb_month["BLOCKBUSTER_MONTH"] = (bb_month["BB_MOVIE_CNT_PRESENCE"] > 0).astype(int)
+bb_month["BLOCKBUSTER_MONTH"] = (bb_month["BB_MOVIE_CNT_CROSS"] > 0).astype(int)
 
 # =========================================
 # 4) 패널 조인 (카드 × 극장 × 블록버스터)
