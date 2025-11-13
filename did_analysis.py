@@ -99,12 +99,23 @@ print("해석(%)≈", (np.exp(m_int.params['DID_INT'])-1)*100)
 
 # 리드·래그를 위해 월 인덱스
 panel = panel.copy()
-order = {ym: i for i, ym in enumerate(sorted(panel['TA_YM'].unique()))}
-panel['t'] = panel['TA_YM'].map(order).astype(int)
 
-# 더 명확히:
-ta_map = {ym:i for i, ym in enumerate(sorted(panel['TA_YM'].unique()))}
-panel['t_idx'] = panel['TA_YM'].map(ta_map)
+# TA_YM → 날짜 → 정수 시간축(0,1,2,...) 생성
+panel['TA_YM'] = panel['TA_YM'].astype(str).str[:6]
+panel = panel[panel['TA_YM'].str.match(r'^\d{6}$')].copy()
+
+panel['t_date'] = pd.to_datetime(panel['TA_YM'] + '01', format='%Y%m%d')
+# 월 고정효과용 정렬된 고유 월
+uniq_months = np.sort(panel['t_date'].unique())
+t_map = {m: i for i, m in enumerate(uniq_months)}
+
+panel['t_idx'] = panel['t_date'].map(t_map).astype('int64')  # ← 정수형으로!
+
+# (선택) 시도별 선형 추세 변수: 각 시도 내 시간 인덱스를 평균 0으로 정규화
+panel['trend_by_sido'] = panel.groupby('SIDO_SHORT')['t_idx'].transform(lambda s: s - s.mean()).astype('float64')
+
+# (선택) 전체 선형 추세
+panel['trend_all'] = panel['t_idx'].astype('float64')
 
 # intensity의 시차/선행 (±1)
 def lag(df, col, k):
