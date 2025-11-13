@@ -179,9 +179,11 @@ panel = panel.merge(
     how="left"
 )
 
-# 결측 채움
-for c in ["BB_MOVIE_CNT_CROSS", "BB_MOVIE_CNT_PRESENCE", "BLOCKBUSTER_MONTH"]:
-    panel[c] = panel[c].fillna(0).astype(int)
+#결측치 처리
+for c in ['BB_MOVIE_CNT_CROSS','BB_MOVIE_CNT_PRESENCE','VIEWERS_SUM','SALES_SUM','BLOCKBUSTER_MONTH']:
+    if c in panel.columns:
+        fill_type = int if c != 'VIEWERS_SUM' and c != 'SALES_SUM' else float
+        panel[c] = panel[c].fillna(0).astype(fill_type)
 
 # DID
 panel["DID"] = panel["TREAT_SIDO"] * panel["BLOCKBUSTER_MONTH"]
