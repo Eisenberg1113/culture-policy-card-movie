@@ -172,7 +172,8 @@ panel = panel.merge(gu_theater, on="SIDO_SHORT", how="left")
 
 # 블록버스터 조인 (TA_YM ↔ YM)
 panel = panel.merge(
-    bb_month[["YM", "BB_MOVIE_CNT_CROSS", "BB_MOVIE_CNT_PRESENCE", "BLOCKBUSTER_MONTH"]],
+    bb_month[["YM", "BB_MOVIE_CNT_CROSS", "BB_MOVIE_CNT_PRESENCE", "BLOCKBUSTER_MONTH",
+              *(["VIEWERS_SUM", "SALES_SUM"] if month_sums is not None else [])]],
     left_on="TA_YM",
     right_on="YM",
     how="left"
