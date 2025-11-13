@@ -99,7 +99,9 @@ print("해석(%)≈", (np.exp(m_int.params['DID_INT'])-1)*100)
 
 # 리드·래그를 위해 월 인덱스
 panel = panel.copy()
-panel['t'] = panel.groupby([]).ngroup()  # 간단히 쓰려면 아래 보조 인덱스 방식:
+order = {ym: i for i, ym in enumerate(sorted(panel['TA_YM'].unique()))}
+panel['t'] = panel['TA_YM'].map(order).astype(int)
+
 # 더 명확히:
 ta_map = {ym:i for i, ym in enumerate(sorted(panel['TA_YM'].unique()))}
 panel['t_idx'] = panel['TA_YM'].map(ta_map)
