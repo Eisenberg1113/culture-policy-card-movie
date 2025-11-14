@@ -12,6 +12,17 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 PANEL_PATH = os.path.join(DATA_DIR, "panel_sido_month.csv")
 
 panel = pd.read_csv(PANEL_PATH, dtype={"TA_YM": str})
+panel['TA_YM_FE'] = panel['TA_YM'].astype('category')
+
+# -----------------------------
+# 콘텐츠산업 매출 구조변수 (log_content_sales) 센터링
+# -----------------------------
+if "log_content_sales" not in panel.columns:
+    raise ValueError("panel에 'log_content_sales' 변수가 없습니다. build_panel.py에서 생성됐는지 확인하세요.")
+
+# 평균을 빼서 센터링 (해석을 편하게 하기 위함)
+panel["log_content_sales_c"] = panel["log_content_sales"] - panel["log_content_sales"].mean()
+
 
 # -----------------------------
 # 1) 기본 QA
@@ -111,22 +122,48 @@ def tidy_result(model, name):
 tidy_all = []
 
 # (A) 이산형 DID (비교용) — 클러스터(SE=SIDO)
-m_bin = smf.ols("logVLM_FNB ~ DID + C(SIDO_SHORT) + C(TA_YM_FE)", data=panel)\
-          .fit(cov_type='cluster', cov_kwds={'groups': panel['SIDO_SHORT']})
-print("\n== (A) Binary DID on FNB ==")
+#    + 콘텐츠산업 매출(로그, 센터링) 통제 + 상호작용
+m_bin = smf.ols(
+    """
+    logVLM_FNB ~ DID
+                 + log_content_sales_c
+                 + DID:log_content_sales_c
+                 + C(SIDO_SHORT) + C(TA_YM_FE)
+    """,
+    data=panel
+).fit(cov_type='cluster', cov_kwds={'groups': panel['SIDO_SHORT']})
+
+print("\n== (A) Binary DID on FNB + 콘텐츠 매출 ==")
 print(m_bin.summary())
-if 'DID' in m_bin.params:
-    print("해석(%) ≈", pct(m_bin.params['DID']))
-tidy_all.append(tidy_result(m_bin, 'A_binary_FNB'))
+if "DID" in m_bin.params:
+    print("기본 DID 효과(%) ≈", pct(m_bin.params["DID"]))
+if "DID:log_content_sales_c" in m_bin.params:
+    print("콘텐츠 매출 1 로그 단위↑에 따른 DID 효과 변화(%) ≈", pct(m_bin.params["DID:log_content_sales_c"]))
+
+tidy_all.append(tidy_result(m_bin, "A_binary_FNB_content"))
+
 
 # (B) 강도형 DID (연속 충격) — HC3
-m_int = smf.ols("logVLM_FNB ~ DID_INT + C(SIDO_SHORT) + C(TA_YM_FE)", data=panel)\
-          .fit(cov_type='HC3')
-print("\n== (B) Intensity DID (Z) on FNB ==")
+#    + 콘텐츠산업 매출(로그, 센터링) 통제 + 상호작용
+m_int = smf.ols(
+    """
+    logVLM_FNB ~ DID_INT
+                 + log_content_sales_c
+                 + DID_INT:log_content_sales_c
+                 + C(SIDO_SHORT) + C(TA_YM_FE)
+    """,
+    data=panel
+).fit(cov_type="HC3")
+
+print("\n== (B) Intensity DID (Z) on FNB + 콘텐츠 매출 ==")
 print(m_int.summary())
-if 'DID_INT' in m_int.params:
-    print("해석(1σ 증가 시 %) ≈", pct(m_int.params['DID_INT']))
-tidy_all.append(tidy_result(m_int, 'B_intensity_FNB'))
+if "DID_INT" in m_int.params:
+    print("해석(진폭 1σ 증가 시 %) ≈", pct(m_int.params["DID_INT"]))
+if "DID_INT:log_content_sales_c" in m_int.params:
+    print("콘텐츠 매출 1 로그 단위↑에 따른 강도효과 변화(%) ≈", pct(m_int.params["DID_INT:log_content_sales_c"]))
+
+tidy_all.append(tidy_result(m_int, "B_intensity_FNB_content"))
+
 
 # (C) 리드/래그
 m_es = smf.ols(
@@ -161,7 +198,7 @@ if 'THEATER_CNT' in panel.columns:
 
 # (F) 다른 타깃: SHOP / CULTURE
 for y in [c for c in ['logVLM_SHOP', 'logVLM_CULTURE'] if c in panel.columns]:
-    mod = smf.ols(f"{y} ~ DID_INT + C(SIDO_SHORT) + C(TA_YM_FE)", data=panel)\
+    mod = smf.ols(f"{y} ~ DID_INT + log_content_sales_c + DID_INT:log_content_sales_c + C(SIDO_SHORT) + C(TA_YM_FE)", data=panel)\
              .fit(cov_type='HC3')
     print(f"\n== Intensity DID on {y} ==")
     print(mod.summary())
