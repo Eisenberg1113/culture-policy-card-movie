@@ -208,4 +208,5 @@ __marimo__/
 
 # === Project specific ===
 data/
+*.csv
 .idea/
