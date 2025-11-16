@@ -1,8 +1,18 @@
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+import matplotlib.pyplot as plt
+import matplotlib as mpl
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+
+# 맥 기본 한글 폰트 설정
+mpl.rc('font', family='AppleGothic')
+
+# 음수 기호 깨짐 방지
+mpl.rcParams['axes.unicode_minus'] = False
+
+
 
 # 맥 기본 한글 폰트 설정
 mpl.rc('font', family='AppleGothic')
